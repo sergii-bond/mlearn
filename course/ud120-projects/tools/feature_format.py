@@ -121,7 +121,7 @@ def targetFeatureSplit( data ):
         target.append( item[0] )
         features.append( item[1:] )
 
-    return target, features
+    return np.array(target), np.array(features)
 
 
 

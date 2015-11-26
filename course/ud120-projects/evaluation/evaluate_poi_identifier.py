@@ -30,3 +30,29 @@ labels, features = targetFeatureSplit(data)
 ### your code goes here 
 
 
+from sklearn import cross_validation
+
+features_train, features_test, labels_train, labels_test = \
+cross_validation.train_test_split(features, labels, test_size=0.3, random_state=42)
+
+from sklearn import tree
+clf = tree.DecisionTreeClassifier()
+clf.fit(features_train, labels_train)
+print("Accuracy is: ", clf.score(features_test, labels_test))
+
+pred = clf.predict(features_test)
+print("Predicted " + str(sum(pred)) + " POIs")
+print("Number of people in the test set: " + str(len(features_test)))
+print("Number of truly POI people in the test set: " + str(sum(labels_test)))
+print("Baseline accuracy: " + str(1.0  - sum(labels_test) / len(labels_test)))
+print("Number of true positives: " + str(sum(labels_test * pred)))
+
+from sklearn import metrics
+
+precision = metrics.precision_score(labels_test, pred)
+recall = metrics.recall_score(labels_test, pred)
+f1 = metrics.f1_score(labels_test, pred)
+print("Precision: " + str(precision))
+print("Recall: " + str(recall))
+print("F1: " + str(f1))
+
