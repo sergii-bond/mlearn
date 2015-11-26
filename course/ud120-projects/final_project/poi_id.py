@@ -7,6 +7,67 @@ sys.path.append("../tools/")
 
 from feature_format import featureFormat, targetFeatureSplit
 from tester import dump_classifier_and_data
+from sklearn.cross_validation import StratifiedShuffleSplit
+
+#PERF_FORMAT_STRING = "\
+#\tAccuracy: {:>0.{display_precision}f}\tPrecision: {:>0.{display_precision}f}\t\
+#Recall: {:>0.{display_precision}f}\tF1: {:>0.{display_precision}f}\tF2: {:>0.{display_precision}f}"
+#RESULTS_FORMAT_STRING = "\tTotal predictions: {:4d}\tTrue positives: {:4d}\tFalse positives: {:4d}\tFalse negatives: {:4d}\tTrue negatives: {:4d}"
+
+# Classifier evaluation function
+def test_classifier(clf, dataset, feature_list, folds = 1000):
+    data = featureFormat(dataset, feature_list, sort_keys = True)
+    labels, features = targetFeatureSplit(data)
+    cv = StratifiedShuffleSplit(labels, folds, random_state = 42)
+    true_negatives = 0
+    false_negatives = 0
+    true_positives = 0
+    false_positives = 0
+    for train_idx, test_idx in cv: 
+        features_train = []
+        features_test  = []
+        labels_train   = []
+        labels_test    = []
+        for ii in train_idx:
+            features_train.append( features[ii] )
+            labels_train.append( labels[ii] )
+        for jj in test_idx:
+            features_test.append( features[jj] )
+            labels_test.append( labels[jj] )
+        
+        ### fit the classifier using training set, and test on validation set
+        clf.fit(features_train, labels_train)
+        predictions = clf.predict(features_test)
+        for prediction, truth in zip(predictions, labels_test):
+            if prediction == 0 and truth == 0:
+                true_negatives += 1
+            elif prediction == 0 and truth == 1:
+                false_negatives += 1
+            elif prediction == 1 and truth == 0:
+                false_positives += 1
+            elif prediction == 1 and truth == 1:
+                true_positives += 1
+            else:
+                print "Warning: Found a predicted label not == 0 or 1."
+                print "All predictions should take value 0 or 1."
+                print "Evaluating performance for processed predictions:"
+                break
+    try:
+        total_predictions = true_negatives + false_negatives + false_positives + true_positives
+        accuracy = 1.0*(true_positives + true_negatives)/total_predictions
+        precision = 1.0*true_positives/(true_positives+false_positives)
+        recall = 1.0*true_positives/(true_positives+false_negatives)
+        f1 = 2.0 * true_positives/(2*true_positives + false_positives+false_negatives)
+        f2 = (1+2.0*2.0) * precision*recall/(4*precision + recall)
+        #print clf
+        #print PERF_FORMAT_STRING.format(accuracy, precision, recall, f1, f2, display_precision = 5)
+        #print RESULTS_FORMAT_STRING.format(total_predictions, true_positives, false_positives, false_negatives, true_negatives)
+        #print ""
+    except:
+        print "Got a divide by zero when trying out:", clf
+        print "Precision or recall may be undefined due to a lack of true positive predicitons."
+    
+    return (precision, recall, f1)
 
 ### Task 1: Select what features you'll use.
 ### features_list is a list of strings, each of which is a feature name.
@@ -18,16 +79,17 @@ data_dict = pickle.load(open("final_project_dataset.pkl", "r") )
 print("Number of points in the dataset: " + str(len(data_dict)))
 
 num_poi = 0
-num_features = 0
+
+feature_names = data_dict[data_dict.keys()[0]].keys()
+num_features = len(feature_names) 
 
 for k, v in data_dict.iteritems():
     poi = v["poi"]
-
     num_poi += int(poi)
 
-    if len(v) > num_features:
-        num_features = len(v)
-        feature_names = v.keys()
+    #if len(v) > num_features:
+    #    num_features = len(v)
+    #    feature_names = v.keys()
 
 print("Number of points with 'poi = True': " + str(num_poi))
 
@@ -91,6 +153,8 @@ feature_names.remove('email_address')
 #feature_names.remove('deferred_income')
 #feature_names.remove('long_term_incentive')
 #feature_names.remove('from_poi_to_this_person')
+#feature_names.remove('from_poi_rel')
+#feature_names.remove('to_poi_rel')
 
 features_list = ['poi'] + feature_names
 #features_list = ['poi', 'salary']
@@ -103,71 +167,21 @@ features_list = ['poi'] + feature_names
 data = featureFormat(my_dataset, features_list, remove_NaN = True, sort_keys = True)
 labels, features = targetFeatureSplit(data)
 
-# The separation is done by labels to avoid skewness in resulting sets
-data_with_label0 = data[labels == 0,:]
-data_with_label1 = data[labels == 1,:]
+# normalize data
+#from sklearn import preprocessing
+#min_max_scaler = preprocessing.MinMaxScaler()
+#features = min_max_scaler.fit_transform(features)
 
-# separate test set from cross-validation set (training + validation)
-from sklearn.cross_validation import train_test_split
-
-data_with_label1_cv, data_with_label1_test = train_test_split(data_with_label1, test_size=0.2)
-data_with_label0_cv, data_with_label0_test = train_test_split(data_with_label0, test_size=0.2)
-#print(len(data_with_label1), len(data_with_label1_cv), len(data_with_label1_test))
-#print(len(data_with_label0), len(data_with_label0_cv), len(data_with_label0_test))
-data_cv = np.vstack((data_with_label1_cv, data_with_label0_cv))
-labels_cv, features_cv = targetFeatureSplit(data_cv)
-print("Number of points in cross-validation set: " + str(len(labels_cv)))
-print("Number of POIs in cross-validation set: " + str(sum(labels_cv)))
-
-data_test = np.vstack((data_with_label1_test, data_with_label0_test))
-labels_test, features_test = targetFeatureSplit(data_test)
-print("Number of points in test set: " + str(len(labels_test)))
-print("Number of POIs in test set: " + str(sum(labels_test)))
-
-# separate validation set from the training set
-# Validation set will be used only in the beginning, for feature selection and
-# to get a sense of what algorithm is better suited for the application 
-# later only the cross-validation set will be used to select final parameters of learning algorithms
-data_with_label1_train, data_with_label1_valid = train_test_split(data_with_label1_cv, test_size=0.2)
-data_with_label0_train, data_with_label0_valid = train_test_split(data_with_label0_cv, test_size=0.2)
-
-data_train = np.vstack((data_with_label1_train, data_with_label0_train))
-labels_train, features_train = targetFeatureSplit(data_train)
-print("Number of points in training set: " + str(len(labels_train)))
-print("Number of POIs in training set: " + str(sum(labels_train)))
-
-data_valid = np.vstack((data_with_label1_valid, data_with_label0_valid))
-labels_valid, features_valid = targetFeatureSplit(data_valid)
-print("Number of points in validation set: " + str(len(labels_valid)))
-print("Number of POIs in validation set: " + str(sum(labels_valid)))
-
-print("Baseline accuracy: " + str(1.0 - sum(labels_valid) / float(len(labels_valid))))
-
-#print features_valid
 # Deal with NaNs
 #from sklearn.preprocessing import Imputer
 #imp = Imputer(missing_values='NaN', strategy='median', axis=0)
-#imp.fit(features_train)
-#features_train = imp.transform(features_train)
-#features_valid = imp.transform(features_valid)
-#features_test = imp.transform(features_test)
+#imp.fit(features)
+#features = imp.transform(features)
 
-# normalize data
-from sklearn import preprocessing
-min_max_scaler = preprocessing.MinMaxScaler()
-features_train = min_max_scaler.fit_transform(features_train)
-features_valid = min_max_scaler.transform(features_valid)
-features_test = min_max_scaler.transform(features_test)
+# Select percentile features
+from sklearn.feature_selection import SelectPercentile
+from sklearn.feature_selection import f_classif
 
-# Select K best features
-#from sklearn.feature_selection import SelectKBest
-#from sklearn.feature_selection import chi2
-#
-#kbest = SelectKBest(chi2, k = 7)
-#kbest.fit(features_train, labels_train)
-#features_train = kbest.transform(features_train)
-#features_valid = kbest.transform(features_valid)
-#features_test = kbest.transform(features_test)
   
 
 ### Task 4: Try a varity of classifiers
@@ -180,52 +194,79 @@ features_test = min_max_scaler.transform(features_test)
 #from sklearn.naive_bayes import GaussianNB
 #clf = GaussianNB()
 
-from sklearn import svm
-c = 10.0
-g = 10
-clf = svm.SVC(C = c, kernel = 'rbf', gamma = g)
+#from sklearn import svm
+#c = 10.0
+#g = 10
+#clf = svm.SVC(C = c, kernel = 'rbf', gamma = g)
 
-#from sklearn import tree
-#clf = tree.DecisionTreeClassifier(min_samples_split=10)
-#clf = tree.DecisionTreeClassifier()
+from sklearn import tree
 
-clf.fit(features_train, labels_train)
-pred_train = clf.predict(features_train)
-pred_valid = clf.predict(features_valid)
-#print(pred_train)
-#print(pred_valid)
+sel_p1 = 0
+sel_p2 = 0
+prec = 0
+rec = 0
+max_f1 = 0
+feature_names = np.array(feature_names)
+clf = None
+
+for p1 in np.arange(5, 50, 5):
+    kbest = SelectPercentile(f_classif, percentile = p1)
+    kbest.fit(features, labels)
+    fl = ['poi'] + list(feature_names[kbest.get_support()])
+
+    for p2 in np.arange(1, 15, 1):
+        sys.stdout.write(".")
+        sys.stdout.flush()
+        cur_clf = tree.DecisionTreeClassifier(min_samples_split = p2)
+        (precision, recall, f1) = test_classifier(cur_clf, my_dataset, fl, folds = 1000)
+
+        if f1 > max_f1:
+            max_f1 = f1
+            sel_p1 = p1
+            sel_p2 = p2
+            features_list = fl
+            prec = precision
+            rec = recall
+            clf = cur_clf
+
+
+print('\n')
+print("Best percentile for features: " + str(sel_p1))
+print("Best features: " + str(features_list))
+print("Best min_samples_split: " + str(sel_p2))
+print("Best F1 score is " + str(max_f1) + " with precision " + str(prec) + " and recall " + str(rec))
 
 #print(sorted(zip(clf.feature_importances_, feature_names), key = lambda x : x[0]))
-from sklearn import metrics
+#from sklearn import metrics
+#
+#print("\tAccuracy on a training set: " + str(metrics.accuracy_score(labels_train, pred_train)))
+#print("\tPrecision on a training set: " + str(metrics.precision_score(labels_train, pred_train)))
+#print("\tRecall on a training set: " + str(metrics.recall_score(labels_train, pred_train)))
+#
+#print("\tAccuracy on a validation set: " + str(metrics.accuracy_score(labels_valid, pred_valid)))
+#print("\tPrecision on a validation set: " + str(metrics.precision_score(labels_valid, pred_valid)))
+#print("\tRecall on a validation set: " + str(metrics.recall_score(labels_valid, pred_valid)))
 
-print("\tAccuracy on a training set: " + str(metrics.accuracy_score(labels_train, pred_train)))
-print("\tPrecision on a training set: " + str(metrics.precision_score(labels_train, pred_train)))
-print("\tRecall on a training set: " + str(metrics.recall_score(labels_train, pred_train)))
-
-print("\tAccuracy on a validation set: " + str(metrics.accuracy_score(labels_valid, pred_valid)))
-print("\tPrecision on a validation set: " + str(metrics.precision_score(labels_valid, pred_valid)))
-print("\tRecall on a validation set: " + str(metrics.recall_score(labels_valid, pred_valid)))
-
-import matplotlib.pyplot as plt
-#plt.scatter(features_train[:, feature_names.index('salary')], color=test_color ) 
-#f1_name = 'salary'
-
-f1_name = 'from_poi_rel'
-#f2_name = 'bonus'
-f2_name = 'to_poi_rel'
-id1 = feature_names.index(f1_name)
-id2 = feature_names.index(f2_name)
-colors = ["b", "r"]
-for ii, pp in enumerate(labels_train):
-    plt.scatter(features_train[ii,id1], features_train[ii,id2], color = colors[int(pp)])
-
-for ii, pp in enumerate(labels_valid):
-    plt.scatter(features_valid[ii,id1], features_valid[ii,id2], color =
-            colors[int(pp)], marker = '*', s = 40)
-
-plt.xlabel(f1_name)
-plt.ylabel(f2_name)
-plt.show() 
+#import matplotlib.pyplot as plt
+##plt.scatter(features_train[:, feature_names.index('salary')], color=test_color ) 
+##f1_name = 'salary'
+#
+#f1_name = 'from_poi_rel'
+##f2_name = 'bonus'
+#f2_name = 'to_poi_rel'
+#id1 = feature_names.index(f1_name)
+#id2 = feature_names.index(f2_name)
+#colors = ["b", "r"]
+#for ii, pp in enumerate(labels_train):
+#    plt.scatter(features_train[ii,id1], features_train[ii,id2], color = colors[int(pp)])
+#
+#for ii, pp in enumerate(labels_valid):
+#    plt.scatter(features_valid[ii,id1], features_valid[ii,id2], color =
+#            colors[int(pp)], marker = '*', s = 40)
+#
+#plt.xlabel(f1_name)
+#plt.ylabel(f2_name)
+#plt.show() 
 
 ### Task 5: Tune your classifier to achieve better than .3 precision and recall 
 ### using our testing script. Check the tester.py script in the final project
@@ -234,10 +275,12 @@ plt.show()
 ### stratified shuffle split cross validation. For more info: 
 ### http://scikit-learn.org/stable/modules/generated/sklearn.cross_validation.StratifiedShuffleSplit.html
 
-# Example starting point. Try investigating other evaluation techniques!
-from sklearn.cross_validation import train_test_split
-features_train, features_test, labels_train, labels_test = \
-    train_test_split(features, labels, test_size=0.3, random_state=42)
+# Create a set of validation and training sets
+# The separation is done by labels to avoid skewness in resulting sets
+
+#cv = StratifiedShuffleSplit(labels, n_iter = 100, test_size = 0.1, random_state = 42)
+
+#print("Baseline accuracy: " + str(1.0 - sum(labels_valid) / float(len(labels_valid))))
 
 ### Task 6: Dump your classifier, dataset, and features_list so anyone can
 ### check your results. You do not need to change anything below, but make sure
