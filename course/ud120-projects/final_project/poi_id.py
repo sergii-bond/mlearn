@@ -9,12 +9,7 @@ from feature_format import featureFormat, targetFeatureSplit
 from tester import dump_classifier_and_data
 from sklearn.cross_validation import StratifiedShuffleSplit
 
-#PERF_FORMAT_STRING = "\
-#\tAccuracy: {:>0.{display_precision}f}\tPrecision: {:>0.{display_precision}f}\t\
-#Recall: {:>0.{display_precision}f}\tF1: {:>0.{display_precision}f}\tF2: {:>0.{display_precision}f}"
-#RESULTS_FORMAT_STRING = "\tTotal predictions: {:4d}\tTrue positives: {:4d}\tFalse positives: {:4d}\tFalse negatives: {:4d}\tTrue negatives: {:4d}"
-
-# Classifier evaluation function
+# Classifier evaluation function using cross-validation
 def test_classifier(clf, dataset, feature_list, folds = 1000):
     data = featureFormat(dataset, feature_list, sort_keys = True)
     labels, features = targetFeatureSplit(data)
@@ -59,10 +54,6 @@ def test_classifier(clf, dataset, feature_list, folds = 1000):
         recall = 1.0*true_positives/(true_positives+false_negatives)
         f1 = 2.0 * true_positives/(2*true_positives + false_positives+false_negatives)
         f2 = (1+2.0*2.0) * precision*recall/(4*precision + recall)
-        #print clf
-        #print PERF_FORMAT_STRING.format(accuracy, precision, recall, f1, f2, display_precision = 5)
-        #print RESULTS_FORMAT_STRING.format(total_predictions, true_positives, false_positives, false_negatives, true_negatives)
-        #print ""
     except:
         print "Got a divide by zero when trying out:", clf
         print "Precision or recall may be undefined due to a lack of true positive predicitons."
@@ -80,39 +71,40 @@ print("Number of points in the dataset: " + str(len(data_dict)))
 
 num_poi = 0
 
+# find the available feature names
 feature_names = data_dict[data_dict.keys()[0]].keys()
 num_features = len(feature_names) 
 
+# how many POIs ?
 for k, v in data_dict.iteritems():
     poi = v["poi"]
     num_poi += int(poi)
 
-    #if len(v) > num_features:
-    #    num_features = len(v)
-    #    feature_names = v.keys()
-
 print("Number of points with 'poi = True': " + str(num_poi))
-
 print("Number of original features: " + str(num_features))
 print("List of original features: " + str(feature_names))
 
 
 
-#for f in features:
-#    print("Summary for feature " + str(f) + ":")
-#    num_nans = 0
-#    for k, v in data_dict.iteritems():
-#        if v[f] == 'NaN':
-#            num_nans += 1
-#
-#    print("\tPercent of NaNs: " + str(round(num_nans / float(len(data_dict)) * 100.0, 1)) + "%")
+# See how many NaNs for each feature
+for f in feature_names:
+    print("Summary for feature " + str(f) + ":")
+    num_nans = 0
+    for k, v in data_dict.iteritems():
+        if v[f] == 'NaN':
+            num_nans += 1
+
+    print("\tPercent of NaNs: " + str(round(num_nans / float(len(data_dict)) * 100.0, 1)) + "%")
 
 ### Task 2: Remove outliers
 ### Task 3: Create new feature(s)
 ### Store to my_dataset for easy export below.
 my_dataset = data_dict
+
+# Remove the outlier 'TOTAL'
 my_dataset.pop("TOTAL", 0)
 
+# create two new features
 for k, v in my_dataset.iteritems():
     from_poi = v['from_poi_to_this_person']
     to_poi = v['from_this_person_to_poi']
@@ -129,59 +121,35 @@ for k, v in my_dataset.iteritems():
     else:
         v['to_poi_rel'] = 'NaN'
 
+# regenerate the list of features after adding new features
 feature_names = my_dataset[my_dataset.keys()[0]].keys()
 print("Modified list of features: " + str(feature_names))
 
+# 'poi' is a label, and 'email_address' is not used
 feature_names.remove('poi')
 feature_names.remove('email_address')
-#feature_names.remove('salary')
-#feature_names.remove('to_messages')
-#feature_names.remove('deferral_payments')
-#feature_names.remove('total_payments')
-#feature_names.remove('exercised_stock_options')
-#feature_names.remove('bonus')
-#feature_names.remove('restricted_stock')
-#feature_names.remove('shared_receipt_with_poi')
-#feature_names.remove('restricted_stock_deferred')
-#feature_names.remove('total_stock_value')
-#feature_names.remove('expenses')
-#feature_names.remove('loan_advances')
-#feature_names.remove('from_messages')
-#feature_names.remove('other')
-#feature_names.remove('from_this_person_to_poi')
-#feature_names.remove('director_fees')
-#feature_names.remove('deferred_income')
-#feature_names.remove('long_term_incentive')
-#feature_names.remove('from_poi_to_this_person')
-#feature_names.remove('from_poi_rel')
-#feature_names.remove('to_poi_rel')
 
+# this is a list of features that procedure featureFormat requires ('poi' must
+# be included and go first)
 features_list = ['poi'] + feature_names
-#features_list = ['poi', 'salary']
 
 ### Extract features and labels from dataset for local testing
 
-# Before looking at data, separate training set, validation set and test set
-# Test set will be only used to report the final evaluation metrics
-#data = featureFormat(my_dataset, features_list, remove_NaN = False, sort_keys = True)
 data = featureFormat(my_dataset, features_list, remove_NaN = True, sort_keys = True)
 labels, features = targetFeatureSplit(data)
 
-# normalize data
+# normalize data (after decision trees were selected, normalization is not required)
 #from sklearn import preprocessing
 #min_max_scaler = preprocessing.MinMaxScaler()
 #features = min_max_scaler.fit_transform(features)
-
-# Deal with NaNs
-#from sklearn.preprocessing import Imputer
-#imp = Imputer(missing_values='NaN', strategy='median', axis=0)
-#imp.fit(features)
-#features = imp.transform(features)
 
 # Select percentile features
 from sklearn.feature_selection import SelectPercentile
 from sklearn.feature_selection import f_classif
 
+kbest = SelectPercentile(f_classif, percentile = 20)
+kbest.fit(features, labels)
+print("SelectPercentile scores: " + str(sorted(zip(feature_names, [round(x, 2) for x in kbest.scores_]), key = lambda x : x[1])))
   
 
 ### Task 4: Try a varity of classifiers
@@ -190,25 +158,26 @@ from sklearn.feature_selection import f_classif
 ### you'll need to use Pipelines. For more info:
 ### http://scikit-learn.org/stable/modules/pipeline.html
 
-# Provided to give you a starting point. Try a variety of classifiers.
-#from sklearn.naive_bayes import GaussianNB
-#clf = GaussianNB()
+# This section is removed after the classifier was selected for subsequent tuning
 
-#from sklearn import svm
-#c = 10.0
-#g = 10
-#clf = svm.SVC(C = c, kernel = 'rbf', gamma = g)
+### Task 5: Tune your classifier to achieve better than .3 precision and recall 
+### using our testing script. Check the tester.py script in the final project
+### folder for details on the evaluation method, especially the test_classifier
+### function. Because of the small size of the dataset, the script uses
+### stratified shuffle split cross validation. For more info: 
+### http://scikit-learn.org/stable/modules/generated/sklearn.cross_validation.StratifiedShuffleSplit.html
 
 from sklearn import tree
 
-sel_p1 = 0
-sel_p2 = 0
-prec = 0
-rec = 0
-max_f1 = 0
-feature_names = np.array(feature_names)
-clf = None
+sel_p1 = 0 # parameter for SelectPercentile
+sel_p2 = 0 # parameter for min_samples_split
+prec = 0   # precision
+rec = 0    # recall
+max_f1 = 0 # f1 score
+feature_names = np.array(feature_names) 
+clf = None # classifier
 
+# tune the parameters
 for p1 in np.arange(5, 50, 5):
     kbest = SelectPercentile(f_classif, percentile = p1)
     kbest.fit(features, labels)
@@ -220,6 +189,7 @@ for p1 in np.arange(5, 50, 5):
         cur_clf = tree.DecisionTreeClassifier(min_samples_split = p2)
         (precision, recall, f1) = test_classifier(cur_clf, my_dataset, fl, folds = 1000)
 
+        # here the best parameters/scores are remembered
         if f1 > max_f1:
             max_f1 = f1
             sel_p1 = p1
@@ -236,51 +206,6 @@ print("Best features: " + str(features_list))
 print("Best min_samples_split: " + str(sel_p2))
 print("Best F1 score is " + str(max_f1) + " with precision " + str(prec) + " and recall " + str(rec))
 
-#print(sorted(zip(clf.feature_importances_, feature_names), key = lambda x : x[0]))
-#from sklearn import metrics
-#
-#print("\tAccuracy on a training set: " + str(metrics.accuracy_score(labels_train, pred_train)))
-#print("\tPrecision on a training set: " + str(metrics.precision_score(labels_train, pred_train)))
-#print("\tRecall on a training set: " + str(metrics.recall_score(labels_train, pred_train)))
-#
-#print("\tAccuracy on a validation set: " + str(metrics.accuracy_score(labels_valid, pred_valid)))
-#print("\tPrecision on a validation set: " + str(metrics.precision_score(labels_valid, pred_valid)))
-#print("\tRecall on a validation set: " + str(metrics.recall_score(labels_valid, pred_valid)))
-
-#import matplotlib.pyplot as plt
-##plt.scatter(features_train[:, feature_names.index('salary')], color=test_color ) 
-##f1_name = 'salary'
-#
-#f1_name = 'from_poi_rel'
-##f2_name = 'bonus'
-#f2_name = 'to_poi_rel'
-#id1 = feature_names.index(f1_name)
-#id2 = feature_names.index(f2_name)
-#colors = ["b", "r"]
-#for ii, pp in enumerate(labels_train):
-#    plt.scatter(features_train[ii,id1], features_train[ii,id2], color = colors[int(pp)])
-#
-#for ii, pp in enumerate(labels_valid):
-#    plt.scatter(features_valid[ii,id1], features_valid[ii,id2], color =
-#            colors[int(pp)], marker = '*', s = 40)
-#
-#plt.xlabel(f1_name)
-#plt.ylabel(f2_name)
-#plt.show() 
-
-### Task 5: Tune your classifier to achieve better than .3 precision and recall 
-### using our testing script. Check the tester.py script in the final project
-### folder for details on the evaluation method, especially the test_classifier
-### function. Because of the small size of the dataset, the script uses
-### stratified shuffle split cross validation. For more info: 
-### http://scikit-learn.org/stable/modules/generated/sklearn.cross_validation.StratifiedShuffleSplit.html
-
-# Create a set of validation and training sets
-# The separation is done by labels to avoid skewness in resulting sets
-
-#cv = StratifiedShuffleSplit(labels, n_iter = 100, test_size = 0.1, random_state = 42)
-
-#print("Baseline accuracy: " + str(1.0 - sum(labels_valid) / float(len(labels_valid))))
 
 ### Task 6: Dump your classifier, dataset, and features_list so anyone can
 ### check your results. You do not need to change anything below, but make sure

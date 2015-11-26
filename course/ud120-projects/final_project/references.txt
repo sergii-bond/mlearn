@@ -1,0 +1,17 @@
+
+
+http://scikit-learn.org/stable/modules/feature_selection.html
+http://scikit-learn.org/stable/auto_examples/ensemble/plot_forest_importances.html#example-ensemble-plot-forest-importances-py
+http://scikit-learn.org/stable/modules/generated/sklearn.cross_validation.StratifiedShuffleSplit.html
+http://scikit-learn.org/stable/modules/cross_validation.html#cross-validation
+http://scikit-learn.org/stable/modules/preprocessing.html#imputation
+http://scikit-learn.org/stable/modules/preprocessing.html
+http://scikit-learn.org/stable/modules/model_evaluation.html
+http://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
+http://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeClassifier.html#sklearn.tree.DecisionTreeClassifier
+http://scikit-learn.org/stable/modules/grid_search.html#grid-search
+
+
+“I hereby confirm that this submission is my work. I have cited above the
+origins of any parts of the submission that were taken from Websites, books,
+forums, blog posts, github repositories, etc.
