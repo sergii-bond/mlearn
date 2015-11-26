@@ -1,4 +1,5 @@
-# Identifying fraud on Enron dataset with machine learning 
+# Identifying fraud on Enron dataset 
+##using machine learning 
 
 Please find the project in ./course/ud120-projects/final_project/ folder:
 * poi_id.py - algorithm
