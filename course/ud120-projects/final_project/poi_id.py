@@ -10,9 +10,16 @@ from tester import dump_classifier_and_data
 from sklearn.cross_validation import StratifiedShuffleSplit
 
 # Classifier evaluation function using cross-validation
-def test_classifier(clf, dataset, feature_list, folds = 1000):
+def test_classifier(clf, dataset, feature_list, folds = 1000, scale = False):
     data = featureFormat(dataset, feature_list, sort_keys = True)
     labels, features = targetFeatureSplit(data)
+
+    if scale == True:
+        # normalize data if required by an algorithm
+        from sklearn import preprocessing
+        min_max_scaler = preprocessing.MinMaxScaler()
+        features = min_max_scaler.fit_transform(features)
+
     cv = StratifiedShuffleSplit(labels, folds, random_state = 42)
     true_negatives = 0
     false_negatives = 0
@@ -54,11 +61,11 @@ def test_classifier(clf, dataset, feature_list, folds = 1000):
         recall = 1.0*true_positives/(true_positives+false_negatives)
         f1 = 2.0 * true_positives/(2*true_positives + false_positives+false_negatives)
         f2 = (1+2.0*2.0) * precision*recall/(4*precision + recall)
+        return (precision, recall, f1)
     except:
         print "Got a divide by zero when trying out:", clf
         print "Precision or recall may be undefined due to a lack of true positive predicitons."
-    
-    return (precision, recall, f1)
+        return (0, 0, 0)
 
 ### Task 1: Select what features you'll use.
 ### features_list is a list of strings, each of which is a feature name.
@@ -101,8 +108,9 @@ for f in feature_names:
 ### Store to my_dataset for easy export below.
 my_dataset = data_dict
 
-# Remove the outlier 'TOTAL'
+# Remove the outliers
 my_dataset.pop("TOTAL", 0)
+my_dataset.pop("TRAVEL AGENCY IN THE PARK", 0)
 
 # create two new features
 for k, v in my_dataset.iteritems():
@@ -132,24 +140,21 @@ feature_names.remove('email_address')
 # this is a list of features that procedure featureFormat requires ('poi' must
 # be included and go first)
 features_list = ['poi'] + feature_names
+feature_names = np.array(feature_names) 
 
 ### Extract features and labels from dataset for local testing
 
 data = featureFormat(my_dataset, features_list, remove_NaN = True, sort_keys = True)
 labels, features = targetFeatureSplit(data)
 
-# normalize data (after decision trees were selected, normalization is not required)
-#from sklearn import preprocessing
-#min_max_scaler = preprocessing.MinMaxScaler()
-#features = min_max_scaler.fit_transform(features)
 
 # Select percentile features
-from sklearn.feature_selection import SelectPercentile
+from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import f_classif
 
-kbest = SelectPercentile(f_classif, percentile = 20)
+kbest = SelectKBest(f_classif, k = 4)
 kbest.fit(features, labels)
-print("SelectPercentile scores: " + str(sorted(zip(feature_names, [round(x, 2) for x in kbest.scores_]), key = lambda x : x[1])))
+print("SelectKBest scores: " + str(sorted(zip(feature_names, [round(x, 2) for x in kbest.scores_]), key = lambda x : x[1])))
   
 
 ### Task 4: Try a varity of classifiers
@@ -158,7 +163,31 @@ print("SelectPercentile scores: " + str(sorted(zip(feature_names, [round(x, 2) f
 ### you'll need to use Pipelines. For more info:
 ### http://scikit-learn.org/stable/modules/pipeline.html
 
-# This section is removed after the classifier was selected for subsequent tuning
+from sklearn import tree
+from sklearn.svm import SVC
+
+#fl = ['poi'] + list(feature_names[kbest.get_support()]) 
+
+#for c in [0.1, 0.5, 1, 5, 10, 15, 20, 30, 40, 50, 100]:
+#    for g in [0.1, 0.5, 1, 5, 10, 15, 20, 30, 40, 50, 100]:
+#for c in [50, 60, 70, 80, 90, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]:
+#    for g in [100]:
+#        clf = SVC(C = c, gamma = g)
+#        (precision, recall, f1) = test_classifier(clf, my_dataset, fl, folds = 1000, scale = True)
+#        print("SVM(" + str(c) + " " + str(g) + "): F1 score is " + str(f1) + " with precision " + str(precision) + " and recall " + str(recall))
+
+#for m in [1, 5, 10, 15, 20]:
+#    clf = tree.DecisionTreeClassifier(min_samples_split = m)
+#    (precision, recall, f1) = test_classifier(clf, my_dataset, fl, folds = 1000)
+#    print("Decision Tree" + str(m) + "): F1 score is " + str(f1) + " with precision " + str(precision) + " and recall " + str(recall))
+#
+#print("With new features: ")
+#fl = ['poi'] + list(feature_names[kbest.get_support()]) + ['from_poi_rel', 'to_poi_rel']
+#
+#for m in [1, 5, 10, 15, 20]:
+#    clf = tree.DecisionTreeClassifier(min_samples_split = m)
+#    (precision, recall, f1) = test_classifier(clf, my_dataset, fl, folds = 1000)
+#    print("Decision Tree" + str(m) + "): F1 score is " + str(f1) + " with precision " + str(precision) + " and recall " + str(recall))
 
 ### Task 5: Tune your classifier to achieve better than .3 precision and recall 
 ### using our testing script. Check the tester.py script in the final project
@@ -167,44 +196,46 @@ print("SelectPercentile scores: " + str(sorted(zip(feature_names, [round(x, 2) f
 ### stratified shuffle split cross validation. For more info: 
 ### http://scikit-learn.org/stable/modules/generated/sklearn.cross_validation.StratifiedShuffleSplit.html
 
-from sklearn import tree
+#tune = False
+tune = True
 
-sel_p1 = 0 # parameter for SelectPercentile
-sel_p2 = 0 # parameter for min_samples_split
-prec = 0   # precision
-rec = 0    # recall
-max_f1 = 0 # f1 score
-feature_names = np.array(feature_names) 
-clf = None # classifier
+if tune == True:
 
-# tune the parameters
-for p1 in np.arange(5, 50, 5):
-    kbest = SelectPercentile(f_classif, percentile = p1)
-    kbest.fit(features, labels)
-    fl = ['poi'] + list(feature_names[kbest.get_support()])
+    sel_p1 = 0 # parameter for SelectPercentile
+    sel_p2 = 0 # parameter for min_samples_split
+    prec = 0   # precision
+    rec = 0    # recall
+    max_f1 = 0 # f1 score
+    clf = None # classifier
 
-    for p2 in np.arange(1, 15, 1):
-        sys.stdout.write(".")
-        sys.stdout.flush()
-        cur_clf = tree.DecisionTreeClassifier(min_samples_split = p2)
-        (precision, recall, f1) = test_classifier(cur_clf, my_dataset, fl, folds = 1000)
+    # tune the parameters
+    for p1 in np.arange(1, 21, 1):
+        kbest = SelectKBest(f_classif, k = p1)
+        kbest.fit(features, labels)
+        fl = ['poi'] + list(feature_names[kbest.get_support()])
 
-        # here the best parameters/scores are remembered
-        if f1 > max_f1:
-            max_f1 = f1
-            sel_p1 = p1
-            sel_p2 = p2
-            features_list = fl
-            prec = precision
-            rec = recall
-            clf = cur_clf
+        for p2 in np.arange(1, 15, 1):
+            sys.stdout.write(".")
+            sys.stdout.flush()
+            cur_clf = tree.DecisionTreeClassifier(min_samples_split = p2)
+            (precision, recall, f1) = test_classifier(cur_clf, my_dataset, fl, folds = 1000)
+
+            # here the best parameters/scores are remembered
+            if f1 > max_f1:
+                max_f1 = f1
+                sel_p1 = p1
+                sel_p2 = p2
+                features_list = fl
+                prec = precision
+                rec = recall
+                clf = cur_clf
 
 
-print('\n')
-print("Best percentile for features: " + str(sel_p1))
-print("Best features: " + str(features_list))
-print("Best min_samples_split: " + str(sel_p2))
-print("Best F1 score is " + str(max_f1) + " with precision " + str(prec) + " and recall " + str(rec))
+    print('\n')
+    print("Best number for features: " + str(sel_p1))
+    print("Best features: " + str(features_list))
+    print("Best min_samples_split: " + str(sel_p2))
+    print("Best F1 score is " + str(max_f1) + " with precision " + str(prec) + " and recall " + str(rec))
 
 
 ### Task 6: Dump your classifier, dataset, and features_list so anyone can
